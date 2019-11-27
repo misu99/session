@@ -139,6 +139,6 @@ Maybe you will find the **memory** provider is a good example.
 ```TokenRegenerateID```与```SessionRegenerateID```作用相同，销毁旧的session产生一个新的session。  
 ```TokenRegenerateID``` 的作用是将旧的session进行续期，session id保持不变，续期时长是参数配置中的存活时长。
 
--  改写获取所有会话的SessionAll接口为 ```SessionAll() ([]string, error)``` ，并在redis适配器中实现该方法。
+-  改写SessionAll接口为获取所有session id ```SessionAll() ([]string, error)``` ，并在适配器中实现该方法。
 
 -  改写持久化接口SessionRelease为 ```SessionRelease()``` ，移除未曾使用的参数。
