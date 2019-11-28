@@ -19,24 +19,28 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/textproto"
 	"net/url"
+	"os"
 	"time"
 )
 
 var (
 	provides = make(map[string]Provider)
+	SLogger  = NewSessionLog(os.Stderr)
 )
 
 // Store contains all data for one session process with specific id.
 type Store interface {
-	Set(key, value interface{}) error     //set session value
-	Get(key interface{}) interface{}      //get session value
-	Delete(key interface{}) error         //delete session value
-	SessionID() string                    //back current sessionID
-	SessionRelease()                      //release the resource & save data to provider & return the data
-	Flush() error                         //delete all data
+	Set(key, value interface{}) error //set session value
+	Get(key interface{}) interface{}  //get session value
+	Delete(key interface{}) error     //delete session value
+	SessionID() string                //back current sessionID
+	SessionRelease()                  //release the resource & save data to provider & return the data
+	Flush() error                     //delete all data
 }
 
 // Provider contains global session methods and saved SessionStores.
@@ -351,7 +355,7 @@ func (manager *Manager) TokenExtension(sid string) error {
 	return err
 }
 
-// GetActiveSession Get all active sessions count number.
+// GetActiveSession Get all active sessions id.
 func (manager *Manager) GetActiveSession() ([]string, error) {
 	return manager.provider.SessionAll()
 }
@@ -383,4 +387,16 @@ func (manager *Manager) isSecure(req *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+// Log implement the log.Logger
+type Log struct {
+	*log.Logger
+}
+
+// NewSessionLog set io.Writer to create a Logger for session.
+func NewSessionLog(out io.Writer) *Log {
+	sl := new(Log)
+	sl.Logger = log.New(out, "[SESSION]", 1e9)
+	return sl
 }
