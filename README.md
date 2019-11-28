@@ -146,4 +146,4 @@ Maybe you will find the **memory** provider is a good example.
 - 适配器修改：
   - **mysql**  
   自动创建session表  
-  
+  session_expiry时间戳更新  
