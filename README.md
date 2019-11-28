@@ -139,16 +139,21 @@ Maybe you will find the **memory** provider is a good example.
 	}
 
 ## Improve
--  增加token形式的session管理（独立存在，不依赖cookie）。  
+- 增加token形式的session管理（独立存在，不依赖cookie）。  
 详见 ```TokenStart()``` 与 ```SessionStart(w http.ResponseWriter, r *http.Request)``` 两个函数之间的差异部分
 
--  适配器增加 ```SessionNew(sid string) (Store, error)``` 接口，将新建session的动作从 ```SessionRead(sid string) (Store, error)``` 中分离。  
+- 适配器增加接口 ```SessionNew(sid string) (Store, error)``` 接口，将新建session的动作从 ```SessionRead(sid string) (Store, error)``` 中分离。  
 通过 ```sess, err := session.GetSessionStore(token)``` 方法的err即可判断是否存在对应的session
 
--  增加token续期函数 ```TokenRegenerateID、TokenExtension```  
+- 增加token续期函数 ```TokenRegenerateID、TokenExtension```  
 ```TokenRegenerateID```与```SessionRegenerateID```作用相同，销毁旧的session产生一个新的session。  
 ```TokenRegenerateID``` 的作用是将旧的session进行续期，session id保持不变，续期时长是参数配置中的存活时长。
 
--  改写SessionAll接口为获取所有session id ```SessionAll() ([]string, error)``` ，并在适配器中实现该方法。
+- 改写SessionAll接口为获取所有session id ```SessionAll() ([]string, error)``` ，并在已有适配器中实现该方法。
 
--  改写持久化接口 ```SessionRelease()``` ，移除未曾使用的参数。
+- 改写持久化接口 ```SessionRelease()``` ，移除未曾使用的参数。
+
+- 适配器修改：
+  - **mysql**  
+  自动创建session表  
+  
