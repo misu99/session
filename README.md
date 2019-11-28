@@ -63,16 +63,6 @@ Then in you web app init the global session manager
 			go globalSessions.GC()
 		}
 
-* Use **Cookie** as provider:
-
-		import _ "github.com/misu99/session/cookie"
-		
-		func init() {
-			globalSessions, _ = session.NewManager(
-				"cookie", `{"cookieName":"gosessionid","enableSetCookie":false,"gclifetime":3600,"ProviderConfig":"{\"cookieName\":\"gosessionid\",\"securityKey\":\"beegocookiehashkey\"}"}`)
-			go globalSessions.GC()
-		}
-
 
 Finally in the handlerfunc you can use it like this
 * session(cookie)
