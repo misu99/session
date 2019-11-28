@@ -123,7 +123,7 @@ func (mp *Provider) SessionInit(maxlifetime int64, savePath string) error {
 
 	c := mp.connectInit()
 	_, err := c.Exec(sqlinit)
-	if strings.ContainsAny(err.Error(), "already exists") {
+	if err == nil || strings.ContainsAny(err.Error(), "already exists") {
 		return nil
 	}
 
