@@ -125,7 +125,7 @@ func (fp *FileProvider) SessionInit(maxlifetime int64, savePath string) error {
 	return nil
 }
 
-// SessionRead Read file session by sid.
+// create new file session by sid.
 // if file is not exist, create it.
 // the file path is generated from sid string.
 func (fp *FileProvider) SessionNew(sid string) (session.Store, error) {
@@ -247,8 +247,7 @@ func (fp *FileProvider) SessionGC() {
 	_ = filepath.Walk(fp.savePath, gcpath)
 }
 
-// SessionAll Get active file session number.
-// it walks save path to count files.
+// SessionAll id values in mysql session
 func (fp *FileProvider) SessionAll() ([]string, error) {
 	a := &activeSession{}
 	err := filepath.Walk(fp.savePath, func(path string, f os.FileInfo, err error) error {

@@ -199,7 +199,7 @@ func (pder *MemProvider) SessionGC() {
 	pder.lock.RUnlock()
 }
 
-// SessionAll get count number of memory session
+// SessionAll id values in mysql session
 func (pder *MemProvider) SessionAll() ([]string, error) {
 	var keys []string
 	for key, _ := range pder.sessions {

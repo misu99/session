@@ -28,6 +28,8 @@ Then in you web app init the global session manager
 
 * Use **memory** as provider:
 
+		import _ "github.com/misu99/session/memory"
+		
 		func init() {
 			globalSessions, _ = session.NewManager("memory", `{"cookieName":"gosessionid","gclifetime":3600}`)
 			go globalSessions.GC()
@@ -35,6 +37,8 @@ Then in you web app init the global session manager
 
 * Use **file** as provider, the last param is the path where you want file to be stored:
 
+		import _ "github.com/misu99/session/file"
+		
 		func init() {
 			globalSessions, _ = session.NewManager("file",`{"cookieName":"gosessionid","gclifetime":3600,"ProviderConfig":"./tmp"}`)
 			go globalSessions.GC()
@@ -42,6 +46,8 @@ Then in you web app init the global session manager
 
 * Use **Redis** as provider, the last param is the Redis conn address,poolsize,password:
 
+		import _ "github.com/misu99/session/redis"
+		
 		func init() {
 			globalSessions, _ = session.NewManager("redis", `{"cookieName":"gosessionid","gclifetime":3600,"ProviderConfig":"127.0.0.1:6379,100,astaxie"}`)
 			go globalSessions.GC()
@@ -49,6 +55,8 @@ Then in you web app init the global session manager
 		
 * Use **MySQL** as provider, the last param is the DSN, learn more from [mysql](https://github.com/go-sql-driver/mysql#dsn-data-source-name):
 
+		import _ "github.com/misu99/session/mysql"
+		
 		func init() {
 			globalSessions, _ = session.NewManager(
 				"mysql", `{"cookieName":"gosessionid","gclifetime":3600,"ProviderConfig":"username:password@protocol(address)/dbname?param=value"}`)
@@ -57,6 +65,8 @@ Then in you web app init the global session manager
 
 * Use **Cookie** as provider:
 
+		import _ "github.com/misu99/session/cookie"
+		
 		func init() {
 			globalSessions, _ = session.NewManager(
 				"cookie", `{"cookieName":"gosessionid","enableSetCookie":false,"gclifetime":3600,"ProviderConfig":"{\"cookieName\":\"gosessionid\",\"securityKey\":\"beegocookiehashkey\"}"}`)
@@ -141,4 +151,4 @@ Maybe you will find the **memory** provider is a good example.
 
 -  改写SessionAll接口为获取所有session id ```SessionAll() ([]string, error)``` ，并在适配器中实现该方法。
 
--  改写持久化接口SessionRelease为 ```SessionRelease()``` ，移除未曾使用的参数。
+-  改写持久化接口 ```SessionRelease()``` ，移除未曾使用的参数。

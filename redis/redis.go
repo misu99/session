@@ -20,9 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/misu99/session"
-
 	"github.com/gomodule/redigo/redis"
+	"github.com/misu99/session"
 )
 
 var redispder = &Provider{}
@@ -256,12 +255,12 @@ func (rp *Provider) SessionDestroy(sid string) error {
 func (rp *Provider) SessionGC() {
 }
 
-// SessionAll return all activeSession
+// SessionAll id values in mysql session
 func (rp *Provider) SessionAll() ([]string, error) {
 	c := rp.poollist.Get()
 	defer c.Close()
 
-	values, err := redis.Strings(c.Do("KEYS","*"))
+	values, err := redis.Strings(c.Do("KEYS", "*"))
 	if err != nil {
 		return nil, err
 	}
