@@ -24,111 +24,119 @@ import (
 	"github.com/misu99/session"
 )
 
-var redispder = &Provider{}
+const MaxPoolSize = 100
 
-// MaxPoolSize redis max pool size
-var MaxPoolSize = 100
+var redisPdr = &ProviderRedis{}
 
-// SessionStore redis session store
-type SessionStore struct {
-	p           *redis.Pool
-	sid         string
-	lock        sync.RWMutex
-	values      map[interface{}]interface{}
-	maxlifetime int64
+// SessionStoreRedis redis session store
+type SessionStoreRedis struct {
+	pl       *redis.Pool
+	sid      string
+	lock     sync.RWMutex
+	values   map[interface{}]interface{}
+	lifetime int64
 }
 
 // Set value in redis session
-func (rs *SessionStore) Set(key, value interface{}) error {
-	rs.lock.Lock()
-	defer rs.lock.Unlock()
-	rs.values[key] = value
+func (st *SessionStoreRedis) Set(key, value interface{}) error {
+	st.lock.Lock()
+	defer st.lock.Unlock()
+	st.values[key] = value
 	return nil
 }
 
 // Get value in redis session
-func (rs *SessionStore) Get(key interface{}) interface{} {
-	rs.lock.RLock()
-	defer rs.lock.RUnlock()
-	if v, ok := rs.values[key]; ok {
+func (st *SessionStoreRedis) Get(key interface{}) interface{} {
+	st.lock.RLock()
+	defer st.lock.RUnlock()
+	if v, ok := st.values[key]; ok {
 		return v
 	}
 	return nil
 }
 
 // Delete value in redis session
-func (rs *SessionStore) Delete(key interface{}) error {
-	rs.lock.Lock()
-	defer rs.lock.Unlock()
-	delete(rs.values, key)
+func (st *SessionStoreRedis) Delete(key interface{}) error {
+	st.lock.Lock()
+	defer st.lock.Unlock()
+	delete(st.values, key)
 	return nil
 }
 
 // Flush clear all values in redis session
-func (rs *SessionStore) Flush() error {
-	rs.lock.Lock()
-	defer rs.lock.Unlock()
-	rs.values = make(map[interface{}]interface{})
+func (st *SessionStoreRedis) Flush() error {
+	st.lock.Lock()
+	defer st.lock.Unlock()
+	st.values = make(map[interface{}]interface{})
 	return nil
 }
 
 // SessionID get redis session id
-func (rs *SessionStore) SessionID() string {
-	return rs.sid
+func (st *SessionStoreRedis) SessionID() string {
+	return st.sid
 }
 
 // SessionRelease save session values to redis
-func (rs *SessionStore) SessionRelease() {
-	b, err := session.EncodeGob(rs.values)
+func (st *SessionStoreRedis) SessionRelease() {
+	b, err := session.EncodeGob(st.values)
 	if err != nil {
 		return
 	}
-	c := rs.p.Get()
-	defer c.Close()
-	_, _ = c.Do("SETEX", rs.sid, rs.maxlifetime, string(b))
+	c := st.pl.Get()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
+
+	_, err = c.Do("SETEX", st.sid, st.lifetime, string(b))
+	if err != nil {
+		session.SLogger.Println(err)
+	}
 }
 
-// Provider redis session provider
-type Provider struct {
-	maxlifetime int64
-	savePath    string
-	poolsize    int
-	password    string
-	dbNum       int
-	poollist    *redis.Pool
+// ProviderRedis redis session provider
+type ProviderRedis struct {
+	lifetime int64
+	savePath string
+	poolSize int
+	password string
+	dbIndex  int
+	pl       *redis.Pool
 }
 
 // SessionInit init redis session
 // savepath like redis server addr,pool size,password,dbnum,IdleTimeout second
 // e.g. 127.0.0.1:6379,100,astaxie,0,30
-func (rp *Provider) SessionInit(maxlifetime int64, savePath string) error {
-	rp.maxlifetime = maxlifetime
+func (pdr *ProviderRedis) SessionInit(lifetime int64, savePath string) error {
+	pdr.lifetime = lifetime
 	configs := strings.Split(savePath, ",")
 	if len(configs) > 0 {
-		rp.savePath = configs[0]
+		pdr.savePath = configs[0]
 	}
 	if len(configs) > 1 {
-		poolsize, err := strconv.Atoi(configs[1])
-		if err != nil || poolsize < 0 {
-			rp.poolsize = MaxPoolSize
+		poolSize, err := strconv.Atoi(configs[1])
+		if err != nil || poolSize < 0 {
+			pdr.poolSize = MaxPoolSize
 		} else {
-			rp.poolsize = poolsize
+			pdr.poolSize = poolSize
 		}
 	} else {
-		rp.poolsize = MaxPoolSize
+		pdr.poolSize = MaxPoolSize
 	}
 	if len(configs) > 2 {
-		rp.password = configs[2]
+		pdr.password = configs[2]
 	}
 	if len(configs) > 3 {
-		dbnum, err := strconv.Atoi(configs[3])
-		if err != nil || dbnum < 0 {
-			rp.dbNum = 0
+		index, err := strconv.Atoi(configs[3])
+		if err != nil || index < 0 {
+			pdr.dbIndex = 0
 		} else {
-			rp.dbNum = dbnum
+			pdr.dbIndex = index
 		}
 	} else {
-		rp.dbNum = 0
+		pdr.dbIndex = 0
 	}
 	var idleTimeout time.Duration = 0
 	if len(configs) > 4 {
@@ -137,40 +145,45 @@ func (rp *Provider) SessionInit(maxlifetime int64, savePath string) error {
 			idleTimeout = time.Duration(timeout) * time.Second
 		}
 	}
-	rp.poollist = &redis.Pool{
+	pdr.pl = &redis.Pool{
 		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", rp.savePath)
+			c, err := redis.Dial("tcp", pdr.savePath)
 			if err != nil {
 				return nil, err
 			}
-			if rp.password != "" {
-				if _, err = c.Do("AUTH", rp.password); err != nil {
-					c.Close()
+			if pdr.password != "" {
+				if _, err = c.Do("AUTH", pdr.password); err != nil {
+					_ = c.Close()
 					return nil, err
 				}
 			}
 			// some redis proxy such as twemproxy is not support select command
-			if rp.dbNum > 0 {
-				_, err = c.Do("SELECT", rp.dbNum)
+			if pdr.dbIndex > 0 {
+				_, err = c.Do("SELECT", pdr.dbIndex)
 				if err != nil {
-					c.Close()
+					_ = c.Close()
 					return nil, err
 				}
 			}
 			return c, err
 		},
-		MaxIdle: rp.poolsize,
+		MaxIdle: pdr.poolSize,
 	}
 
-	rp.poollist.IdleTimeout = idleTimeout
+	pdr.pl.IdleTimeout = idleTimeout
 
-	return rp.poollist.Get().Err()
+	return pdr.pl.Get().Err()
 }
 
 // create new redis session by sid
-func (rp *Provider) SessionNew(sid string) (session.Store, error) {
-	c := rp.poollist.Get()
-	defer c.Close()
+func (pdr *ProviderRedis) SessionNew(sid string) (session.Store, error) {
+	c := pdr.pl.Get()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
 
 	var kv map[interface{}]interface{}
 
@@ -186,14 +199,19 @@ func (rp *Provider) SessionNew(sid string) (session.Store, error) {
 		}
 	}
 
-	rs := &SessionStore{p: rp.poollist, sid: sid, values: kv, maxlifetime: rp.maxlifetime}
-	return rs, nil
+	st := &SessionStoreRedis{pl: pdr.pl, sid: sid, values: kv, lifetime: pdr.lifetime}
+	return st, nil
 }
 
 // read redis session by sid
-func (rp *Provider) SessionRead(sid string) (session.Store, error) {
-	c := rp.poollist.Get()
-	defer c.Close()
+func (pdr *ProviderRedis) SessionRead(sid string) (session.Store, error) {
+	c := pdr.pl.Get()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
 
 	var kv map[interface{}]interface{}
 
@@ -210,14 +228,19 @@ func (rp *Provider) SessionRead(sid string) (session.Store, error) {
 		}
 	}
 
-	rs := &SessionStore{p: rp.poollist, sid: sid, values: kv, maxlifetime: rp.maxlifetime}
-	return rs, nil
+	st := &SessionStoreRedis{pl: pdr.pl, sid: sid, values: kv, lifetime: pdr.lifetime}
+	return st, nil
 }
 
 // SessionExist check redis session exist by sid
-func (rp *Provider) SessionExist(sid string) bool {
-	c := rp.poollist.Get()
-	defer c.Close()
+func (pdr *ProviderRedis) SessionExist(sid string) bool {
+	c := pdr.pl.Get()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
 
 	if existed, err := redis.Int(c.Do("EXISTS", sid)); err != nil || existed == 0 {
 		return false
@@ -226,39 +249,63 @@ func (rp *Provider) SessionExist(sid string) bool {
 }
 
 // SessionRegenerate generate new sid for redis session
-func (rp *Provider) SessionRegenerate(oldsid, sid string) (session.Store, error) {
-	c := rp.poollist.Get()
-	defer c.Close()
+func (pdr *ProviderRedis) SessionRegenerate(oldSid, sid string) (session.Store, error) {
+	c := pdr.pl.Get()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
 
-	if existed, _ := redis.Int(c.Do("EXISTS", oldsid)); existed == 0 {
-		// oldsid doesn't exists, set the new sid directly
+	if existed, _ := redis.Int(c.Do("EXISTS", oldSid)); existed == 0 {
+		// oldSid doesn't exists, set the new sid directly
 		// ignore error here, since if it return error
 		// the existed value will be 0
-		_, _ = c.Do("SET", sid, "", "EX", rp.maxlifetime)
+		_, err := c.Do("SET", sid, "", "EX", pdr.lifetime)
+		if err != nil {
+			session.SLogger.Println(err)
+		}
 	} else {
-		_, _ = c.Do("RENAME", oldsid, sid)
-		_, _ = c.Do("EXPIRE", sid, rp.maxlifetime)
+		_, err := c.Do("RENAME", oldSid, sid)
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+		_, err = c.Do("EXPIRE", sid, pdr.lifetime)
+		if err != nil {
+			session.SLogger.Println(err)
+		}
 	}
-	return rp.SessionRead(sid)
+	return pdr.SessionRead(sid)
 }
 
 // SessionDestroy delete redis session by id
-func (rp *Provider) SessionDestroy(sid string) error {
-	c := rp.poollist.Get()
-	defer c.Close()
+func (pdr *ProviderRedis) SessionDestroy(sid string) error {
+	c := pdr.pl.Get()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
 
 	_, err := c.Do("DEL", sid)
 	return err
 }
 
-// SessionGC Impelment method, no used.
-func (rp *Provider) SessionGC() {
+// SessionGC impl method, no used.
+func (pdr *ProviderRedis) SessionGC() {
 }
 
 // SessionAll id values in mysql session
-func (rp *Provider) SessionAll() ([]string, error) {
-	c := rp.poollist.Get()
-	defer c.Close()
+func (pdr *ProviderRedis) SessionAll() ([]string, error) {
+	c := pdr.pl.Get()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
 
 	values, err := redis.Strings(c.Do("KEYS", "*"))
 	if err != nil {
@@ -269,5 +316,5 @@ func (rp *Provider) SessionAll() ([]string, error) {
 }
 
 func init() {
-	session.Register("redis", redispder)
+	session.Register("redis", redisPdr)
 }

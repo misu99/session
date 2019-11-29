@@ -26,7 +26,7 @@ import (
 
 const (
 	TableName = "session"
-	sqlinit   = `
+	sqlInit   = `
 		CREATE TABLE ` + TableName + ` (
 		session_key char(64) NOT NULL,
 		session_data blob,
@@ -36,13 +36,11 @@ const (
 	`
 )
 
-var (
-	mysqlpder = &Provider{}
-)
+var mysqlPdr = &ProviderMySQL{}
 
-// SessionStore mysql session store
-type SessionStore struct {
-	c      *sql.DB
+// SessionStoreMySQL mysql session store
+type SessionStoreMySQL struct {
+	conn   *sql.DB
 	sid    string
 	lock   sync.RWMutex
 	values map[interface{}]interface{}
@@ -50,7 +48,7 @@ type SessionStore struct {
 
 // Set value in mysql session.
 // it is temp value in map.
-func (st *SessionStore) Set(key, value interface{}) error {
+func (st *SessionStoreMySQL) Set(key, value interface{}) error {
 	st.lock.Lock()
 	defer st.lock.Unlock()
 	st.values[key] = value
@@ -58,7 +56,7 @@ func (st *SessionStore) Set(key, value interface{}) error {
 }
 
 // Get value from mysql session
-func (st *SessionStore) Get(key interface{}) interface{} {
+func (st *SessionStoreMySQL) Get(key interface{}) interface{} {
 	st.lock.RLock()
 	defer st.lock.RUnlock()
 	if v, ok := st.values[key]; ok {
@@ -68,7 +66,7 @@ func (st *SessionStore) Get(key interface{}) interface{} {
 }
 
 // Delete value in mysql session
-func (st *SessionStore) Delete(key interface{}) error {
+func (st *SessionStoreMySQL) Delete(key interface{}) error {
 	st.lock.Lock()
 	defer st.lock.Unlock()
 	delete(st.values, key)
@@ -76,7 +74,7 @@ func (st *SessionStore) Delete(key interface{}) error {
 }
 
 // Flush clear all values in mysql session
-func (st *SessionStore) Flush() error {
+func (st *SessionStoreMySQL) Flush() error {
 	st.lock.Lock()
 	defer st.lock.Unlock()
 	st.values = make(map[interface{}]interface{})
@@ -84,31 +82,42 @@ func (st *SessionStore) Flush() error {
 }
 
 // SessionID get session id of this mysql session store
-func (st *SessionStore) SessionID() string {
+func (st *SessionStoreMySQL) SessionID() string {
 	return st.sid
 }
 
 // SessionRelease save mysql session values to database.
 // must call this method to save values to database.
-func (st *SessionStore) SessionRelease() {
-	defer st.c.Close()
+func (st *SessionStoreMySQL) SessionRelease() {
+	defer func() {
+		err := st.conn.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
+
 	b, err := session.EncodeGob(st.values)
 	if err != nil {
+		session.SLogger.Println(err)
 		return
 	}
-	st.c.Exec("UPDATE "+TableName+" set `session_data`=?, `session_expiry`=? where session_key=?",
+	_, err = st.conn.Exec("UPDATE "+TableName+" set `session_data`=?, `session_expiry`=? where session_key=?",
 		b, time.Now().Unix(), st.sid)
+	if err != nil {
+		session.SLogger.Println(err)
+		return
+	}
 }
 
-// Provider mysql session provider
-type Provider struct {
-	maxlifetime int64
-	savePath    string
+// ProviderMySQL mysql session provider
+type ProviderMySQL struct {
+	lifetime int64
+	savePath string
 }
 
 // connect to mysql
-func (mp *Provider) connectInit() *sql.DB {
-	db, e := sql.Open("mysql", mp.savePath)
+func (pdr *ProviderMySQL) connectInit() *sql.DB {
+	db, e := sql.Open("mysql", pdr.savePath)
 	if e != nil {
 		return nil
 	}
@@ -116,13 +125,12 @@ func (mp *Provider) connectInit() *sql.DB {
 }
 
 // SessionInit init mysql session.
-// savepath is the connection string of mysql.
-func (mp *Provider) SessionInit(maxlifetime int64, savePath string) error {
-	mp.maxlifetime = maxlifetime
-	mp.savePath = savePath
+func (pdr *ProviderMySQL) SessionInit(lifetime int64, savePath string) error {
+	pdr.lifetime = lifetime
+	pdr.savePath = savePath
 
-	c := mp.connectInit()
-	_, err := c.Exec(sqlinit)
+	c := pdr.connectInit()
+	_, err := c.Exec(sqlInit)
 	if err == nil || strings.ContainsAny(err.Error(), "already exists") {
 		return nil
 	}
@@ -131,36 +139,40 @@ func (mp *Provider) SessionInit(maxlifetime int64, savePath string) error {
 }
 
 // create new mysql session by sid
-func (mp *Provider) SessionNew(sid string) (session.Store, error) {
-	c := mp.connectInit()
+func (pdr *ProviderMySQL) SessionNew(sid string) (session.Store, error) {
+	c := pdr.connectInit()
 	row := c.QueryRow("select session_data from "+TableName+" where session_key=?", sid)
-	var sessiondata []byte
-	err := row.Scan(&sessiondata)
+	var data []byte
+	err := row.Scan(&data)
 	if err == sql.ErrNoRows {
-		c.Exec("insert into "+TableName+"(`session_key`,`session_data`,`session_expiry`) values(?,?,?)",
+		_, err = c.Exec("insert into "+TableName+"(`session_key`,`session_data`,`session_expiry`) values(?,?,?)",
 			sid, "", time.Now().Unix())
-	}
-	var kv map[interface{}]interface{}
-	if len(sessiondata) == 0 {
-		kv = make(map[interface{}]interface{})
-	} else {
-		kv, err = session.DecodeGob(sessiondata)
 		if err != nil {
 			return nil, err
 		}
 	}
-	rs := &SessionStore{c: c, sid: sid, values: kv}
+
+	var kv map[interface{}]interface{}
+	if len(data) == 0 {
+		kv = make(map[interface{}]interface{})
+	} else {
+		kv, err = session.DecodeGob(data)
+		if err != nil {
+			return nil, err
+		}
+	}
+	rs := &SessionStoreMySQL{conn: c, sid: sid, values: kv}
 	return rs, nil
 }
 
 // SessionRead get mysql session by sid
-func (mp *Provider) SessionRead(sid string) (session.Store, error) {
-	c := mp.connectInit()
+func (pdr *ProviderMySQL) SessionRead(sid string) (session.Store, error) {
+	c := pdr.connectInit()
 	row := c.QueryRow("select session_data from "+TableName+" where session_key=?", sid)
-	var sessiondata []byte
-	err := row.Scan(&sessiondata)
+	var data []byte
+	err := row.Scan(&data)
 	//if err == sql.ErrNoRows {
-	//	c.Exec("insert into "+TableName+"(`session_key`,`session_data`,`session_expiry`) values(?,?,?)",
+	//	conn.Exec("insert into "+TableName+"(`session_key`,`session_data`,`session_expiry`) values(?,?,?)",
 	//		sid, "", time.Now().Unix())
 	//}
 	if err != nil {
@@ -168,76 +180,119 @@ func (mp *Provider) SessionRead(sid string) (session.Store, error) {
 	}
 
 	var kv map[interface{}]interface{}
-	if len(sessiondata) == 0 {
+	if len(data) == 0 {
 		kv = make(map[interface{}]interface{})
 	} else {
-		kv, err = session.DecodeGob(sessiondata)
+		kv, err = session.DecodeGob(data)
 		if err != nil {
 			return nil, err
 		}
 	}
-	rs := &SessionStore{c: c, sid: sid, values: kv}
+	rs := &SessionStoreMySQL{conn: c, sid: sid, values: kv}
 	return rs, nil
 }
 
 // SessionExist check mysql session exist
-func (mp *Provider) SessionExist(sid string) bool {
-	c := mp.connectInit()
-	defer c.Close()
+func (pdr *ProviderMySQL) SessionExist(sid string) bool {
+	c := pdr.connectInit()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
+
 	row := c.QueryRow("select session_data from "+TableName+" where session_key=?", sid)
-	var sessiondata []byte
-	err := row.Scan(&sessiondata)
+	var data []byte
+	err := row.Scan(&data)
 	return err != sql.ErrNoRows
 }
 
 // SessionRegenerate generate new sid for mysql session
-func (mp *Provider) SessionRegenerate(oldsid, sid string) (session.Store, error) {
-	c := mp.connectInit()
-	row := c.QueryRow("select session_data from "+TableName+" where session_key=?", oldsid)
-	var sessiondata []byte
-	err := row.Scan(&sessiondata)
+func (pdr *ProviderMySQL) SessionRegenerate(oldSid, sid string) (session.Store, error) {
+	c := pdr.connectInit()
+	row := c.QueryRow("select session_data from "+TableName+" where session_key=?", oldSid)
+	var data []byte
+	err := row.Scan(&data)
 	if err == sql.ErrNoRows {
-		c.Exec("insert into "+TableName+"(`session_key`,`session_data`,`session_expiry`) values(?,?,?)", oldsid, "", time.Now().Unix())
-	}
-	c.Exec("update "+TableName+" set `session_key`=?, `session_expiry`=? where session_key=?", sid, time.Now().Unix(), oldsid)
-	var kv map[interface{}]interface{}
-	if len(sessiondata) == 0 {
-		kv = make(map[interface{}]interface{})
-	} else {
-		kv, err = session.DecodeGob(sessiondata)
+		_, err = c.Exec("insert into "+TableName+"(`session_key`,`session_data`,`session_expiry`) values(?,?,?)", oldSid, "", time.Now().Unix())
 		if err != nil {
 			return nil, err
 		}
 	}
-	rs := &SessionStore{c: c, sid: sid, values: kv}
+
+	_, err = c.Exec("update "+TableName+" set `session_key`=?, `session_expiry`=? where session_key=?", sid, time.Now().Unix(), oldSid)
+	if err != nil {
+		return nil, err
+	}
+
+	var kv map[interface{}]interface{}
+	if len(data) == 0 {
+		kv = make(map[interface{}]interface{})
+	} else {
+		kv, err = session.DecodeGob(data)
+		if err != nil {
+			return nil, err
+		}
+	}
+	rs := &SessionStoreMySQL{conn: c, sid: sid, values: kv}
 	return rs, nil
 }
 
 // SessionDestroy delete mysql session by sid
-func (mp *Provider) SessionDestroy(sid string) error {
-	c := mp.connectInit()
-	c.Exec("DELETE FROM "+TableName+" where session_key=?", sid)
-	c.Close()
+func (pdr *ProviderMySQL) SessionDestroy(sid string) error {
+	c := pdr.connectInit()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
+
+	_, err := c.Exec("DELETE FROM "+TableName+" where session_key=?", sid)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
 // SessionGC delete expired values in mysql session
-func (mp *Provider) SessionGC() {
-	c := mp.connectInit()
-	c.Exec("DELETE from "+TableName+" where session_expiry < ?", time.Now().Unix()-mp.maxlifetime)
-	c.Close()
+func (pdr *ProviderMySQL) SessionGC() {
+	c := pdr.connectInit()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
+
+	_, err := c.Exec("DELETE from "+TableName+" where session_expiry < ?", time.Now().Unix()-pdr.lifetime)
+	if err != nil {
+		session.SLogger.Println(err)
+	}
 }
 
 // SessionAll id values in mysql session
-func (mp *Provider) SessionAll() ([]string, error) {
-	c := mp.connectInit()
-	defer c.Close()
+func (pdr *ProviderMySQL) SessionAll() ([]string, error) {
+	c := pdr.connectInit()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
 
 	rows, err := c.Query("select session_key from " + TableName)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			session.SLogger.Println(err)
+		}
+	}()
 
 	var sids []string
 	for rows.Next() {
@@ -253,5 +308,5 @@ func (mp *Provider) SessionAll() ([]string, error) {
 }
 
 func init() {
-	session.Register("mysql", mysqlpder)
+	session.Register("mysql", mysqlPdr)
 }
