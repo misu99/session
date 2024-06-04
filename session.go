@@ -19,38 +19,29 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
-	"log"
+	"github.com/misu99/session/provider/file"
+	"github.com/misu99/session/provider/memory"
+	"github.com/misu99/session/provider/mysql"
+	"github.com/misu99/session/provider/redis"
+	"github.com/misu99/session/store"
 	"net/http"
 	"net/textproto"
 	"net/url"
-	"os"
 	"time"
 )
 
-var (
-	provides = make(map[string]Provider)
-	SLogger  = NewSessionLog(os.Stderr)
-)
-
-// Store contains all data for one session process with specific id.
-type Store interface {
-	Set(key, value interface{}) error //set session value
-	Get(key interface{}) interface{}  //get session value
-	Delete(key interface{}) error     //delete session value
-	SessionID() string                //back current sessionID
-	SessionRelease()                  //release the resource & save data to provider & return the data
-	Flush() error                     //delete all data
-}
+//var (
+// provides = make(map[string]Provider)
+//)
 
 // Provider contains global session methods and saved SessionStores.
 // it can operate a SessionStore by its id.
 type Provider interface {
 	SessionInit(gclifetime int64, config string) error
-	SessionNew(sid string) (Store, error)
-	SessionRead(sid string) (Store, error)
+	SessionNew(sid string) (store.Store, error)
+	SessionRead(sid string) (store.Store, error)
 	SessionExist(sid string) bool
-	SessionRegenerate(oldsid, sid string) (Store, error)
+	SessionRegenerate(oldsid, sid string) (store.Store, error)
 	SessionDestroy(sid string) error
 	SessionAll() ([]string, error) //get all active session
 	SessionGC()
@@ -59,23 +50,37 @@ type Provider interface {
 // Register makes a session provide available by the provided name.
 // If Register is called twice with the same name or if driver is nil,
 // it panics.
-func Register(name string, provide Provider) {
-	if provide == nil {
-		panic("session: Register provide is nil")
-	}
-	if _, dup := provides[name]; dup {
-		panic("session: Register called twice for provider " + name)
-	}
-	provides[name] = provide
-}
+//func Register(name string, provide Provider) {
+//	if provide == nil {
+//		panic("session: Register provide is nil")
+//	}
+//	if _, dup := provides[name]; dup {
+//		panic("session: Register called twice for provider " + name)
+//	}
+//	provides[name] = provide
+//}
 
-//GetProvider
+// GetProvider
 func GetProvider(name string) (Provider, error) {
-	provider, ok := provides[name]
-	if !ok {
-		return nil, fmt.Errorf("session: unknown provide %q (forgotten import?)", name)
+	//provider, ok := provides[name]
+	//if !ok {
+	//	return nil, fmt.Errorf("session: unknown provide %q (forgotten import?)", name)
+	//}
+	//return provider, nil
+
+	switch name {
+	case "file":
+		return file.NewProvider(), nil
+	case "memory":
+		return memory.NewProvider(), nil
+	case "mysql":
+		return mysql.NewProvider(), nil
+	case "redis":
+		return redis.NewProvider(), nil
+	default:
+		return nil, fmt.Errorf("session: unknown provider %s", name)
 	}
-	return provider, nil
+
 }
 
 // ManagerConfig define the session config
@@ -88,6 +93,7 @@ type ManagerConfig struct {
 	Secure                  bool   `json:"secure"`
 	CookieLifeTime          int    `json:"cookieLifeTime"`
 	ProviderConfig          string `json:"providerConfig"`
+	ProviderConfigMgr       string `json:"providerConfigMgr,omitempty"`
 	Domain                  string `json:"domain"`
 	SessionIDLength         int64  `json:"sessionIDLength"`
 	EnableSidInHTTPHeader   bool   `json:"EnableSidInHTTPHeader"`
@@ -98,8 +104,9 @@ type ManagerConfig struct {
 
 // Manager contains Provider and its configuration.
 type Manager struct {
-	provider Provider
-	config   *ManagerConfig
+	provider    Provider
+	providerMgr Provider
+	config      *ManagerConfig
 }
 
 // NewManager Create new Manager with provider name and json config string.
@@ -115,15 +122,9 @@ type Manager struct {
 // 3. hashkey default beegosessionkey
 // 4. maxage default is none
 func NewManager(provideName string, cf *ManagerConfig) (*Manager, error) {
-	provider, ok := provides[provideName]
-	if !ok {
-		return nil, fmt.Errorf("session: unknown provide %q (forgotten import?)", provideName)
-	}
-
 	if cf.Maxlifetime == 0 {
 		cf.Maxlifetime = cf.Gclifetime
 	}
-
 	if cf.EnableSidInHTTPHeader {
 		if cf.SessionNameInHTTPHeader == "" {
 			panic(errors.New("SessionNameInHTTPHeader is empty"))
@@ -135,19 +136,37 @@ func NewManager(provideName string, cf *ManagerConfig) (*Manager, error) {
 			panic(errors.New(strErrMsg))
 		}
 	}
-
-	err := provider.SessionInit(cf.Maxlifetime, cf.ProviderConfig)
-	if err != nil {
-		return nil, err
-	}
-
 	if cf.SessionIDLength == 0 {
 		cf.SessionIDLength = 16
 	}
 
+	provider, err := GetProvider(provideName)
+	if err != nil {
+		return nil, err
+	}
+
+	err = provider.SessionInit(cf.Maxlifetime, cf.ProviderConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	var providerMgr Provider
+	if cf.ProviderConfigMgr != "" {
+		providerMgr, err = GetProvider(provideName)
+		if err != nil {
+			return nil, err
+		}
+
+		err = providerMgr.SessionInit(cf.Maxlifetime, cf.ProviderConfigMgr)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &Manager{
-		provider,
-		cf,
+		provider:    provider,
+		providerMgr: providerMgr,
+		config:      cf,
 	}, nil
 }
 
@@ -193,7 +212,7 @@ func (manager *Manager) getSid(r *http.Request) (string, error) {
 
 // SessionStart generate or read the session id from http request.
 // if session id exists, return SessionStore with this id.
-func (manager *Manager) SessionStart(w http.ResponseWriter, r *http.Request) (session Store, err error) {
+func (manager *Manager) SessionStart(w http.ResponseWriter, r *http.Request) (session store.Store, err error) {
 	sid, errs := manager.getSid(r)
 	if errs != nil {
 		return nil, errs
@@ -265,7 +284,7 @@ func (manager *Manager) SessionDestroy(w http.ResponseWriter, r *http.Request) {
 }
 
 // 生成token
-func (manager *Manager) TokenStart() (session Store, err error) {
+func (manager *Manager) TokenStart() (session store.Store, err error) {
 	// Generate a new session
 	sid, errs := manager.sessionID()
 	if errs != nil {
@@ -286,8 +305,38 @@ func (manager *Manager) TokenDestroy(sid string) error {
 }
 
 // GetSessionStore Get SessionStore by its id.
-func (manager *Manager) GetSessionStore(sid string) (sessions Store, err error) {
+func (manager *Manager) GetSessionStore(sid string) (sessions store.Store, err error) {
 	sessions, err = manager.provider.SessionRead(sid)
+	return
+}
+
+// 生成token与用户映射
+func (manager *Manager) TokenMgrCreate(userId, token string) (session store.Store, err error) {
+	session, err = manager.providerMgr.SessionNew(userId)
+	if err != nil {
+		return nil, err
+	}
+
+	err = session.Set("token", token)
+	if err != nil {
+		return nil, err
+	}
+
+	session.SessionRelease()
+	return
+}
+func (manager *Manager) MgrDestroyToken(userId string) (err error) {
+	session, err := manager.providerMgr.SessionRead(userId)
+	if err != nil {
+		return
+	}
+
+	val := session.Get("token")
+	if val != nil {
+		manager.provider.SessionDestroy(val.(string)) // 销毁token
+		manager.providerMgr.SessionDestroy(userId)    // 销毁token与用户映射
+	}
+
 	return
 }
 
@@ -299,7 +348,7 @@ func (manager *Manager) GC() {
 }
 
 // SessionRegenerateID Regenerate a session id for this SessionStore who's id is saving in http request.
-func (manager *Manager) SessionRegenerateID(w http.ResponseWriter, r *http.Request) (session Store) {
+func (manager *Manager) SessionRegenerateID(w http.ResponseWriter, r *http.Request) (session store.Store) {
 	sid, err := manager.sessionID()
 	if err != nil {
 		return
@@ -340,7 +389,7 @@ func (manager *Manager) SessionRegenerateID(w http.ResponseWriter, r *http.Reque
 }
 
 // 重新生成token
-func (manager *Manager) TokenRegenerateID(oldsid string) (Store, error) {
+func (manager *Manager) TokenRegenerateID(oldsid string) (store.Store, error) {
 	sid, err := manager.sessionID()
 	if err != nil {
 		return nil, err
@@ -387,16 +436,4 @@ func (manager *Manager) isSecure(req *http.Request) bool {
 		return false
 	}
 	return true
-}
-
-// Log implement the log.Logger
-type Log struct {
-	*log.Logger
-}
-
-// NewSessionLog set io.Writer to create a Logger for session.
-func NewSessionLog(out io.Writer) *Log {
-	sl := new(Log)
-	sl.Logger = log.New(out, "[SESSION]", 1e9)
-	return sl
 }

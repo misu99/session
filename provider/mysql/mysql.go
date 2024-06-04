@@ -16,12 +16,13 @@ package mysql
 
 import (
 	"database/sql"
+	"github.com/misu99/session/store"
+	"github.com/misu99/session/utils"
 	"strings"
 	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/misu99/session"
 )
 
 const (
@@ -36,7 +37,7 @@ const (
 	`
 )
 
-var mysqlPdr = &ProviderMySQL{}
+//var mysqlPdr = &ProviderMySQL{}
 
 // SessionStoreMySQL mysql session store
 type SessionStoreMySQL struct {
@@ -92,19 +93,19 @@ func (st *SessionStoreMySQL) SessionRelease() {
 	defer func() {
 		err := st.conn.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
-	b, err := session.EncodeGob(st.values)
+	b, err := utils.EncodeGob(st.values)
 	if err != nil {
-		session.SLogger.Println(err)
+		utils.SLogger.Println(err)
 		return
 	}
 	_, err = st.conn.Exec("UPDATE "+TableName+" set `session_data`=?, `session_expiry`=? where session_key=?",
 		b, time.Now().Unix(), st.sid)
 	if err != nil {
-		session.SLogger.Println(err)
+		utils.SLogger.Println(err)
 		return
 	}
 }
@@ -139,7 +140,7 @@ func (pdr *ProviderMySQL) SessionInit(lifetime int64, savePath string) error {
 }
 
 // create new mysql session by sid
-func (pdr *ProviderMySQL) SessionNew(sid string) (session.Store, error) {
+func (pdr *ProviderMySQL) SessionNew(sid string) (store.Store, error) {
 	c := pdr.connectInit()
 	row := c.QueryRow("select session_data from "+TableName+" where session_key=?", sid)
 	var data []byte
@@ -156,7 +157,7 @@ func (pdr *ProviderMySQL) SessionNew(sid string) (session.Store, error) {
 	if len(data) == 0 {
 		kv = make(map[interface{}]interface{})
 	} else {
-		kv, err = session.DecodeGob(data)
+		kv, err = utils.DecodeGob(data)
 		if err != nil {
 			return nil, err
 		}
@@ -166,7 +167,7 @@ func (pdr *ProviderMySQL) SessionNew(sid string) (session.Store, error) {
 }
 
 // SessionRead get mysql session by sid
-func (pdr *ProviderMySQL) SessionRead(sid string) (session.Store, error) {
+func (pdr *ProviderMySQL) SessionRead(sid string) (store.Store, error) {
 	c := pdr.connectInit()
 	row := c.QueryRow("select session_data from "+TableName+" where session_key=?", sid)
 	var data []byte
@@ -183,7 +184,7 @@ func (pdr *ProviderMySQL) SessionRead(sid string) (session.Store, error) {
 	if len(data) == 0 {
 		kv = make(map[interface{}]interface{})
 	} else {
-		kv, err = session.DecodeGob(data)
+		kv, err = utils.DecodeGob(data)
 		if err != nil {
 			return nil, err
 		}
@@ -198,7 +199,7 @@ func (pdr *ProviderMySQL) SessionExist(sid string) bool {
 	defer func() {
 		err := c.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
@@ -209,7 +210,7 @@ func (pdr *ProviderMySQL) SessionExist(sid string) bool {
 }
 
 // SessionRegenerate generate new sid for mysql session
-func (pdr *ProviderMySQL) SessionRegenerate(oldSid, sid string) (session.Store, error) {
+func (pdr *ProviderMySQL) SessionRegenerate(oldSid, sid string) (store.Store, error) {
 	c := pdr.connectInit()
 	row := c.QueryRow("select session_data from "+TableName+" where session_key=?", oldSid)
 	var data []byte
@@ -230,7 +231,7 @@ func (pdr *ProviderMySQL) SessionRegenerate(oldSid, sid string) (session.Store, 
 	if len(data) == 0 {
 		kv = make(map[interface{}]interface{})
 	} else {
-		kv, err = session.DecodeGob(data)
+		kv, err = utils.DecodeGob(data)
 		if err != nil {
 			return nil, err
 		}
@@ -245,7 +246,7 @@ func (pdr *ProviderMySQL) SessionDestroy(sid string) error {
 	defer func() {
 		err := c.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
@@ -263,13 +264,13 @@ func (pdr *ProviderMySQL) SessionGC() {
 	defer func() {
 		err := c.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
 	_, err := c.Exec("DELETE from "+TableName+" where session_expiry < ?", time.Now().Unix()-pdr.lifetime)
 	if err != nil {
-		session.SLogger.Println(err)
+		utils.SLogger.Println(err)
 	}
 }
 
@@ -279,7 +280,7 @@ func (pdr *ProviderMySQL) SessionAll() ([]string, error) {
 	defer func() {
 		err := c.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
@@ -290,7 +291,7 @@ func (pdr *ProviderMySQL) SessionAll() ([]string, error) {
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
@@ -307,6 +308,10 @@ func (pdr *ProviderMySQL) SessionAll() ([]string, error) {
 	return sids, nil
 }
 
-func init() {
-	session.Register("mysql", mysqlPdr)
+//func init() {
+//	session.Register("mysql", mysqlPdr)
+//}
+
+func NewProvider() *ProviderMySQL {
+	return &ProviderMySQL{}
 }

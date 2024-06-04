@@ -16,6 +16,8 @@ package file
 
 import (
 	"errors"
+	"github.com/misu99/session/store"
+	"github.com/misu99/session/utils"
 	"io/ioutil"
 	"os"
 	"path"
@@ -23,8 +25,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/misu99/session"
 )
 
 var (
@@ -82,9 +82,9 @@ func (st *SessionStoreFile) SessionID() string {
 func (st *SessionStoreFile) SessionRelease() {
 	filePdr.lock.Lock()
 	defer filePdr.lock.Unlock()
-	b, err := session.EncodeGob(st.values)
+	b, err := utils.EncodeGob(st.values)
 	if err != nil {
-		session.SLogger.Println(err)
+		utils.SLogger.Println(err)
 		return
 	}
 	_, err = os.Stat(path.Join(filePdr.savePath, string(st.sid[0]), string(st.sid[1]), st.sid))
@@ -92,13 +92,13 @@ func (st *SessionStoreFile) SessionRelease() {
 	if err == nil {
 		f, err = os.OpenFile(path.Join(filePdr.savePath, string(st.sid[0]), string(st.sid[1]), st.sid), os.O_RDWR, 0777)
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 			return
 		}
 	} else if os.IsNotExist(err) {
 		f, err = os.Create(path.Join(filePdr.savePath, string(st.sid[0]), string(st.sid[1]), st.sid))
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 			return
 		}
 	} else {
@@ -128,7 +128,7 @@ func (pdr *ProviderFile) SessionInit(lifetime int64, savePath string) error {
 // create new file session by sid.
 // if file is not exist, create it.
 // the file path is generated from sid string.
-func (pdr *ProviderFile) SessionNew(sid string) (session.Store, error) {
+func (pdr *ProviderFile) SessionNew(sid string) (store.Store, error) {
 	if strings.ContainsAny(sid, "./") {
 		return nil, nil
 	}
@@ -140,7 +140,7 @@ func (pdr *ProviderFile) SessionNew(sid string) (session.Store, error) {
 
 	err := os.MkdirAll(path.Join(pdr.savePath, string(sid[0]), string(sid[1])), 0777)
 	if err != nil {
-		session.SLogger.Println(err.Error())
+		utils.SLogger.Println(err.Error())
 	}
 	_, err = os.Stat(path.Join(pdr.savePath, string(sid[0]), string(sid[1]), sid))
 	var f *os.File
@@ -154,7 +154,7 @@ func (pdr *ProviderFile) SessionNew(sid string) (session.Store, error) {
 	defer func() {
 		err := f.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
@@ -167,7 +167,7 @@ func (pdr *ProviderFile) SessionNew(sid string) (session.Store, error) {
 	if len(b) == 0 {
 		kv = make(map[interface{}]interface{})
 	} else {
-		kv, err = session.DecodeGob(b)
+		kv, err = utils.DecodeGob(b)
 		if err != nil {
 			return nil, err
 		}
@@ -179,7 +179,7 @@ func (pdr *ProviderFile) SessionNew(sid string) (session.Store, error) {
 
 // SessionRead Read file session by sid.
 // the file path is generated from sid string.
-func (pdr *ProviderFile) SessionRead(sid string) (session.Store, error) {
+func (pdr *ProviderFile) SessionRead(sid string) (store.Store, error) {
 	if strings.ContainsAny(sid, "./") {
 		return nil, nil
 	}
@@ -191,7 +191,7 @@ func (pdr *ProviderFile) SessionRead(sid string) (session.Store, error) {
 
 	err := os.MkdirAll(path.Join(pdr.savePath, string(sid[0]), string(sid[1])), 0777)
 	if err != nil {
-		session.SLogger.Println(err.Error())
+		utils.SLogger.Println(err.Error())
 	}
 	_, err = os.Stat(path.Join(pdr.savePath, string(sid[0]), string(sid[1]), sid))
 	var f *os.File
@@ -205,7 +205,7 @@ func (pdr *ProviderFile) SessionRead(sid string) (session.Store, error) {
 	defer func() {
 		err := f.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
@@ -218,7 +218,7 @@ func (pdr *ProviderFile) SessionRead(sid string) (session.Store, error) {
 	if len(b) == 0 {
 		kv = make(map[interface{}]interface{})
 	} else {
-		kv, err = session.DecodeGob(b)
+		kv, err = utils.DecodeGob(b)
 		if err != nil {
 			return nil, err
 		}
@@ -262,7 +262,7 @@ func (pdr *ProviderFile) SessionAll() ([]string, error) {
 		return a.visit(path, f, err)
 	})
 	if err != nil {
-		//session.SLogger.Printf("filepath.Walk() returned %v\n", err)
+		//utils.SLogger.Printf("filepath.Walk() returned %v\n", err)
 		return nil, err
 	}
 	return a.sids, nil
@@ -270,7 +270,7 @@ func (pdr *ProviderFile) SessionAll() ([]string, error) {
 
 // SessionRegenerate Generate new sid for file session.
 // it delete old file and create new file named from new sid.
-func (pdr *ProviderFile) SessionRegenerate(oldSid, sid string) (session.Store, error) {
+func (pdr *ProviderFile) SessionRegenerate(oldSid, sid string) (store.Store, error) {
 	filePdr.lock.Lock()
 	defer filePdr.lock.Unlock()
 
@@ -287,7 +287,7 @@ func (pdr *ProviderFile) SessionRegenerate(oldSid, sid string) (session.Store, e
 
 	err := os.MkdirAll(newPath, 0777)
 	if err != nil {
-		session.SLogger.Println(err.Error())
+		utils.SLogger.Println(err.Error())
 	}
 
 	// if old sid file exist
@@ -306,7 +306,7 @@ func (pdr *ProviderFile) SessionRegenerate(oldSid, sid string) (session.Store, e
 		if len(b) == 0 {
 			kv = make(map[interface{}]interface{})
 		} else {
-			kv, err = session.DecodeGob(b)
+			kv, err = utils.DecodeGob(b)
 			if err != nil {
 				return nil, err
 			}
@@ -363,6 +363,10 @@ func (as *activeSession) visit(paths string, f os.FileInfo, err error) error {
 	return nil
 }
 
-func init() {
-	session.Register("file", filePdr)
+//func init() {
+//	session.Register("file", filePdr)
+//}
+
+func NewProvider() *ProviderFile {
+	return filePdr
 }

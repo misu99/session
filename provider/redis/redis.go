@@ -15,18 +15,19 @@
 package redis
 
 import (
+	"github.com/misu99/session/store"
+	"github.com/misu99/session/utils"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"github.com/misu99/session"
 )
 
 const MaxPoolSize = 100
 
-var redisPdr = &ProviderRedis{}
+//var redisPdr = &ProviderRedis{}
 
 // SessionStoreRedis redis session store
 type SessionStoreRedis struct {
@@ -78,7 +79,7 @@ func (st *SessionStoreRedis) SessionID() string {
 
 // SessionRelease save session values to redis
 func (st *SessionStoreRedis) SessionRelease() {
-	b, err := session.EncodeGob(st.values)
+	b, err := utils.EncodeGob(st.values)
 	if err != nil {
 		return
 	}
@@ -86,13 +87,13 @@ func (st *SessionStoreRedis) SessionRelease() {
 	defer func() {
 		err := c.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
 	_, err = c.Do("SETEX", st.sid, st.lifetime, string(b))
 	if err != nil {
-		session.SLogger.Println(err)
+		utils.SLogger.Println(err)
 	}
 }
 
@@ -176,12 +177,12 @@ func (pdr *ProviderRedis) SessionInit(lifetime int64, savePath string) error {
 }
 
 // create new redis session by sid
-func (pdr *ProviderRedis) SessionNew(sid string) (session.Store, error) {
+func (pdr *ProviderRedis) SessionNew(sid string) (store.Store, error) {
 	c := pdr.pl.Get()
 	defer func() {
 		err := c.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
@@ -194,7 +195,7 @@ func (pdr *ProviderRedis) SessionNew(sid string) (session.Store, error) {
 	if len(kvs) == 0 {
 		kv = make(map[interface{}]interface{})
 	} else {
-		if kv, err = session.DecodeGob([]byte(kvs)); err != nil {
+		if kv, err = utils.DecodeGob([]byte(kvs)); err != nil {
 			return nil, err
 		}
 	}
@@ -204,12 +205,12 @@ func (pdr *ProviderRedis) SessionNew(sid string) (session.Store, error) {
 }
 
 // read redis session by sid
-func (pdr *ProviderRedis) SessionRead(sid string) (session.Store, error) {
+func (pdr *ProviderRedis) SessionRead(sid string) (store.Store, error) {
 	c := pdr.pl.Get()
 	defer func() {
 		err := c.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
@@ -223,7 +224,7 @@ func (pdr *ProviderRedis) SessionRead(sid string) (session.Store, error) {
 	if len(kvs) == 0 {
 		kv = make(map[interface{}]interface{})
 	} else {
-		if kv, err = session.DecodeGob([]byte(kvs)); err != nil {
+		if kv, err = utils.DecodeGob([]byte(kvs)); err != nil {
 			return nil, err
 		}
 	}
@@ -238,7 +239,7 @@ func (pdr *ProviderRedis) SessionExist(sid string) bool {
 	defer func() {
 		err := c.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
@@ -249,12 +250,12 @@ func (pdr *ProviderRedis) SessionExist(sid string) bool {
 }
 
 // SessionRegenerate generate new sid for redis session
-func (pdr *ProviderRedis) SessionRegenerate(oldSid, sid string) (session.Store, error) {
+func (pdr *ProviderRedis) SessionRegenerate(oldSid, sid string) (store.Store, error) {
 	c := pdr.pl.Get()
 	defer func() {
 		err := c.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
@@ -264,16 +265,16 @@ func (pdr *ProviderRedis) SessionRegenerate(oldSid, sid string) (session.Store, 
 		// the existed value will be 0
 		_, err := c.Do("SET", sid, "", "EX", pdr.lifetime)
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	} else {
 		_, err := c.Do("RENAME", oldSid, sid)
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 		_, err = c.Do("EXPIRE", sid, pdr.lifetime)
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}
 	return pdr.SessionRead(sid)
@@ -285,7 +286,7 @@ func (pdr *ProviderRedis) SessionDestroy(sid string) error {
 	defer func() {
 		err := c.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
@@ -303,7 +304,7 @@ func (pdr *ProviderRedis) SessionAll() ([]string, error) {
 	defer func() {
 		err := c.Close()
 		if err != nil {
-			session.SLogger.Println(err)
+			utils.SLogger.Println(err)
 		}
 	}()
 
@@ -315,6 +316,10 @@ func (pdr *ProviderRedis) SessionAll() ([]string, error) {
 	return values, nil
 }
 
-func init() {
-	session.Register("redis", redisPdr)
+//func init() {
+//	session.Register("redis", redisPdr)
+//}
+
+func NewProvider() *ProviderRedis {
+	return &ProviderRedis{}
 }

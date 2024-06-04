@@ -17,13 +17,12 @@ package memory
 import (
 	"container/list"
 	"errors"
+	"github.com/misu99/session/store"
 	"sync"
 	"time"
-
-	"github.com/misu99/session"
 )
 
-var memPdr = &ProviderMem{list: list.New(), sessions: make(map[string]*list.Element)}
+//var memPdr = &ProviderMem{list: list.New(), sessions: make(map[string]*list.Element)}
 
 // SessionStoreMem memory session store.
 // it saved sessions in a map in memory.
@@ -94,7 +93,7 @@ func (pdr *ProviderMem) SessionInit(lifetime int64, savePath string) error {
 }
 
 // create new memory session by sid
-func (pdr *ProviderMem) SessionNew(sid string) (session.Store, error) {
+func (pdr *ProviderMem) SessionNew(sid string) (store.Store, error) {
 	pdr.lock.RLock()
 	if element, ok := pdr.sessions[sid]; ok {
 		go pdr.SessionUpdate(sid)
@@ -111,7 +110,7 @@ func (pdr *ProviderMem) SessionNew(sid string) (session.Store, error) {
 }
 
 // SessionRead get memory session store by sid
-func (pdr *ProviderMem) SessionRead(sid string) (session.Store, error) {
+func (pdr *ProviderMem) SessionRead(sid string) (store.Store, error) {
 	pdr.lock.RLock()
 	if element, ok := pdr.sessions[sid]; ok {
 		go pdr.SessionUpdate(sid)
@@ -140,7 +139,7 @@ func (pdr *ProviderMem) SessionExist(sid string) bool {
 }
 
 // SessionRegenerate generate new sid for session store in memory session
-func (pdr *ProviderMem) SessionRegenerate(oldSid, sid string) (session.Store, error) {
+func (pdr *ProviderMem) SessionRegenerate(oldSid, sid string) (store.Store, error) {
 	pdr.lock.RLock()
 	if element, ok := pdr.sessions[oldSid]; ok {
 		go pdr.SessionUpdate(oldSid)
@@ -218,6 +217,10 @@ func (pdr *ProviderMem) SessionUpdate(sid string) {
 	}
 }
 
-func init() {
-	session.Register("memory", memPdr)
+//func init() {
+//	session.Register("memory", memPdr)
+//}
+
+func NewProvider() *ProviderMem {
+	return &ProviderMem{list: list.New(), sessions: make(map[string]*list.Element)}
 }
