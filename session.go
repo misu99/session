@@ -38,7 +38,7 @@ import (
 // it can operate a SessionStore by its id.
 type Provider interface {
 	SessionInit(gclifetime int64, config string) error
-	SessionNew(sid string) (store.Store, error)
+	SessionNew(sid string, lifetime int64) (store.Store, error)
 	SessionRead(sid string) (store.Store, error)
 	SessionExist(sid string) bool
 	SessionRegenerate(oldsid, sid string) (store.Store, error)
@@ -228,7 +228,7 @@ func (manager *Manager) SessionStart(w http.ResponseWriter, r *http.Request) (se
 		return nil, errs
 	}
 
-	session, err = manager.provider.SessionNew(sid)
+	session, err = manager.provider.SessionNew(sid, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +291,23 @@ func (manager *Manager) TokenStart() (session store.Store, err error) {
 		return nil, errs
 	}
 
-	session, err = manager.provider.SessionNew(sid)
+	session, err = manager.provider.SessionNew(sid, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return
+}
+
+// 生成token(自定义时效)
+func (manager *Manager) TokenStartCustomExpired(ttl time.Duration) (session store.Store, err error) {
+	// Generate a new session
+	sid, errs := manager.sessionID()
+	if errs != nil {
+		return nil, errs
+	}
+
+	session, err = manager.provider.SessionNew(sid, int64(ttl.Seconds()))
 	if err != nil {
 		return nil, err
 	}
@@ -312,7 +328,7 @@ func (manager *Manager) GetSessionStore(sid string) (sessions store.Store, err e
 
 // 生成token与用户映射
 func (manager *Manager) TokenMgrCreate(userId, token string) (session store.Store, err error) {
-	session, err = manager.providerMgr.SessionNew(userId)
+	session, err = manager.providerMgr.SessionNew(userId, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +372,7 @@ func (manager *Manager) SessionRegenerateID(w http.ResponseWriter, r *http.Reque
 	cookie, err := r.Cookie(manager.config.CookieName)
 	if err != nil || cookie.Value == "" {
 		//delete old cookie
-		session, _ = manager.provider.SessionNew(sid)
+		session, _ = manager.provider.SessionNew(sid, 0)
 		cookie = &http.Cookie{Name: manager.config.CookieName,
 			Value:    url.QueryEscape(sid),
 			Path:     "/",

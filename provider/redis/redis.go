@@ -177,7 +177,7 @@ func (pdr *ProviderRedis) SessionInit(lifetime int64, savePath string) error {
 }
 
 // create new redis session by sid
-func (pdr *ProviderRedis) SessionNew(sid string) (store.Store, error) {
+func (pdr *ProviderRedis) SessionNew(sid string, lifetime int64) (store.Store, error) {
 	c := pdr.pl.Get()
 	defer func() {
 		err := c.Close()
@@ -200,7 +200,11 @@ func (pdr *ProviderRedis) SessionNew(sid string) (store.Store, error) {
 		}
 	}
 
-	st := &SessionStoreRedis{pl: pdr.pl, sid: sid, values: kv, lifetime: pdr.lifetime}
+	if lifetime == 0 {
+		lifetime = pdr.lifetime
+	}
+
+	st := &SessionStoreRedis{pl: pdr.pl, sid: sid, values: kv, lifetime: lifetime}
 	return st, nil
 }
 

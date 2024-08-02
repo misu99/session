@@ -128,7 +128,7 @@ func (pdr *ProviderFile) SessionInit(lifetime int64, savePath string) error {
 // create new file session by sid.
 // if file is not exist, create it.
 // the file path is generated from sid string.
-func (pdr *ProviderFile) SessionNew(sid string) (store.Store, error) {
+func (pdr *ProviderFile) SessionNew(sid string, lifetime int64) (store.Store, error) {
 	if strings.ContainsAny(sid, "./") {
 		return nil, nil
 	}

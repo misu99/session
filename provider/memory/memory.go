@@ -93,7 +93,7 @@ func (pdr *ProviderMem) SessionInit(lifetime int64, savePath string) error {
 }
 
 // create new memory session by sid
-func (pdr *ProviderMem) SessionNew(sid string) (store.Store, error) {
+func (pdr *ProviderMem) SessionNew(sid string, lifetime int64) (store.Store, error) {
 	pdr.lock.RLock()
 	if element, ok := pdr.sessions[sid]; ok {
 		go pdr.SessionUpdate(sid)

@@ -140,7 +140,7 @@ func (pdr *ProviderMySQL) SessionInit(lifetime int64, savePath string) error {
 }
 
 // create new mysql session by sid
-func (pdr *ProviderMySQL) SessionNew(sid string) (store.Store, error) {
+func (pdr *ProviderMySQL) SessionNew(sid string, lifetime int64) (store.Store, error) {
 	c := pdr.connectInit()
 	row := c.QueryRow("select session_data from "+TableName+" where session_key=?", sid)
 	var data []byte
