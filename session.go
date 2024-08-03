@@ -300,7 +300,7 @@ func (manager *Manager) TokenStart() (session store.Store, err error) {
 }
 
 // 生成token(自定义时效)
-func (manager *Manager) TokenStartCustomExpired(ttl time.Duration) (session store.Store, err error) {
+func (manager *Manager) TokenStartExpired(ttl time.Duration) (session store.Store, err error) {
 	// Generate a new session
 	sid, errs := manager.sessionID()
 	if errs != nil {
