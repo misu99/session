@@ -41,7 +41,7 @@ type Provider interface {
 	SessionNew(sid string, lifetime int64) (store.Store, error)
 	SessionRead(sid string) (store.Store, error)
 	SessionExist(sid string) bool
-	SessionRegenerate(oldsid, sid string) (store.Store, error)
+	SessionRegenerate(oldsid, sid string, lifetime int64) (store.Store, error)
 	SessionDestroy(sid string) error
 	SessionAll() ([]string, error) //get all active session
 	SessionGC()
@@ -382,7 +382,7 @@ func (manager *Manager) SessionRegenerateID(w http.ResponseWriter, r *http.Reque
 		}
 	} else {
 		oldsid, _ := url.QueryUnescape(cookie.Value)
-		session, _ = manager.provider.SessionRegenerate(oldsid, sid)
+		session, _ = manager.provider.SessionRegenerate(oldsid, sid, 0)
 		cookie.Value = url.QueryEscape(sid)
 		cookie.HttpOnly = true
 		cookie.Path = "/"
@@ -411,12 +411,16 @@ func (manager *Manager) TokenRegenerateID(oldsid string) (store.Store, error) {
 		return nil, err
 	}
 
-	return manager.provider.SessionRegenerate(oldsid, sid)
+	return manager.provider.SessionRegenerate(oldsid, sid, 0)
 }
 
 // token续期
 func (manager *Manager) TokenExtension(sid string) error {
-	_, err := manager.provider.SessionRegenerate(sid, sid)
+	_, err := manager.provider.SessionRegenerate(sid, sid, 0)
+	return err
+}
+func (manager *Manager) TokenExtensionExpired(sid string, ttl time.Duration) error {
+	_, err := manager.provider.SessionRegenerate(sid, sid, int64(ttl.Seconds()))
 	return err
 }
 

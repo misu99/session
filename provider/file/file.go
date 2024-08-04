@@ -270,7 +270,7 @@ func (pdr *ProviderFile) SessionAll() ([]string, error) {
 
 // SessionRegenerate Generate new sid for file session.
 // it delete old file and create new file named from new sid.
-func (pdr *ProviderFile) SessionRegenerate(oldSid, sid string) (store.Store, error) {
+func (pdr *ProviderFile) SessionRegenerate(oldSid, sid string, lifetime int64) (store.Store, error) {
 	filePdr.lock.Lock()
 	defer filePdr.lock.Unlock()
 

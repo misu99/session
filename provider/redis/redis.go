@@ -254,7 +254,11 @@ func (pdr *ProviderRedis) SessionExist(sid string) bool {
 }
 
 // SessionRegenerate generate new sid for redis session
-func (pdr *ProviderRedis) SessionRegenerate(oldSid, sid string) (store.Store, error) {
+func (pdr *ProviderRedis) SessionRegenerate(oldSid, sid string, lifetime int64) (store.Store, error) {
+	if lifetime != 0 {
+		pdr.lifetime = lifetime
+	}
+
 	c := pdr.pl.Get()
 	defer func() {
 		err := c.Close()

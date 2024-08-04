@@ -210,7 +210,7 @@ func (pdr *ProviderMySQL) SessionExist(sid string) bool {
 }
 
 // SessionRegenerate generate new sid for mysql session
-func (pdr *ProviderMySQL) SessionRegenerate(oldSid, sid string) (store.Store, error) {
+func (pdr *ProviderMySQL) SessionRegenerate(oldSid, sid string, lifetime int64) (store.Store, error) {
 	c := pdr.connectInit()
 	row := c.QueryRow("select session_data from "+TableName+" where session_key=?", oldSid)
 	var data []byte
