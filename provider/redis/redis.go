@@ -26,6 +26,7 @@ import (
 )
 
 const MaxPoolSize = 100
+const LifeTimeKey = "lifetime"
 
 //var redisPdr = &ProviderRedis{}
 
@@ -77,6 +78,22 @@ func (st *SessionStoreRedis) SessionID() string {
 	return st.sid
 }
 
+// SessionDelay session延期
+func (st *SessionStoreRedis) SessionDelay() {
+	c := st.pl.Get()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			utils.SLogger.Println(err)
+		}
+	}()
+
+	_, err := c.Do("EXPIRE", st.sid, st.lifetime)
+	if err != nil {
+		utils.SLogger.Println(err)
+	}
+}
+
 // SessionRelease save session values to redis
 func (st *SessionStoreRedis) SessionRelease() {
 	b, err := utils.EncodeGob(st.values)
@@ -99,7 +116,7 @@ func (st *SessionStoreRedis) SessionRelease() {
 
 // ProviderRedis redis session provider
 type ProviderRedis struct {
-	lifetime int64
+	lifetime int64 // 全局默认生命周期
 	savePath string
 	poolSize int
 	password string
@@ -178,8 +195,8 @@ func (pdr *ProviderRedis) SessionInit(lifetime int64, savePath string) error {
 
 // create new redis session by sid
 func (pdr *ProviderRedis) SessionNew(sid string, lifetime int64) (store.Store, error) {
-	if lifetime != 0 {
-		pdr.lifetime = lifetime
+	if lifetime == 0 {
+		lifetime = pdr.lifetime // 未指定生命周期使用全局默认
 	}
 
 	c := pdr.pl.Get()
@@ -198,13 +215,14 @@ func (pdr *ProviderRedis) SessionNew(sid string, lifetime int64) (store.Store, e
 	}
 	if len(kvs) == 0 {
 		kv = make(map[interface{}]interface{})
+		kv[LifeTimeKey] = lifetime
 	} else {
 		if kv, err = utils.DecodeGob([]byte(kvs)); err != nil {
 			return nil, err
 		}
 	}
 
-	st := &SessionStoreRedis{pl: pdr.pl, sid: sid, values: kv, lifetime: pdr.lifetime}
+	st := &SessionStoreRedis{pl: pdr.pl, sid: sid, values: kv, lifetime: lifetime}
 	return st, nil
 }
 
@@ -233,7 +251,15 @@ func (pdr *ProviderRedis) SessionRead(sid string) (store.Store, error) {
 		}
 	}
 
-	st := &SessionStoreRedis{pl: pdr.pl, sid: sid, values: kv, lifetime: pdr.lifetime}
+	// 读取最大生命周期
+	var lifetime int64
+	if v, ok := kv[LifeTimeKey]; ok {
+		lifetime = v.(int64)
+	} else {
+		lifetime = pdr.lifetime // 未指定生命周期使用全局默认
+	}
+
+	st := &SessionStoreRedis{pl: pdr.pl, sid: sid, values: kv, lifetime: lifetime}
 	return st, nil
 }
 
@@ -254,11 +280,7 @@ func (pdr *ProviderRedis) SessionExist(sid string) bool {
 }
 
 // SessionRegenerate generate new sid for redis session
-func (pdr *ProviderRedis) SessionRegenerate(oldSid, sid string, lifetime int64) (store.Store, error) {
-	if lifetime != 0 {
-		pdr.lifetime = lifetime
-	}
-
+func (pdr *ProviderRedis) SessionRegenerate(oldSid, sid string) (store.Store, error) {
 	c := pdr.pl.Get()
 	defer func() {
 		err := c.Close()

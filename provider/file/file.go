@@ -78,6 +78,10 @@ func (st *SessionStoreFile) SessionID() string {
 	return st.sid
 }
 
+// SessionDelay Implement method, no used.
+func (st *SessionStoreFile) SessionDelay() {
+}
+
 // SessionRelease Write file session to local file with Gob string
 func (st *SessionStoreFile) SessionRelease() {
 	filePdr.lock.Lock()
@@ -270,7 +274,7 @@ func (pdr *ProviderFile) SessionAll() ([]string, error) {
 
 // SessionRegenerate Generate new sid for file session.
 // it delete old file and create new file named from new sid.
-func (pdr *ProviderFile) SessionRegenerate(oldSid, sid string, lifetime int64) (store.Store, error) {
+func (pdr *ProviderFile) SessionRegenerate(oldSid, sid string) (store.Store, error) {
 	filePdr.lock.Lock()
 	defer filePdr.lock.Unlock()
 

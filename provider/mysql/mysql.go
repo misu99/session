@@ -87,6 +87,10 @@ func (st *SessionStoreMySQL) SessionID() string {
 	return st.sid
 }
 
+// SessionDelay Implement method, no used.
+func (st *SessionStoreMySQL) SessionDelay() {
+}
+
 // SessionRelease save mysql session values to database.
 // must call this method to save values to database.
 func (st *SessionStoreMySQL) SessionRelease() {
@@ -210,7 +214,7 @@ func (pdr *ProviderMySQL) SessionExist(sid string) bool {
 }
 
 // SessionRegenerate generate new sid for mysql session
-func (pdr *ProviderMySQL) SessionRegenerate(oldSid, sid string, lifetime int64) (store.Store, error) {
+func (pdr *ProviderMySQL) SessionRegenerate(oldSid, sid string) (store.Store, error) {
 	c := pdr.connectInit()
 	row := c.QueryRow("select session_data from "+TableName+" where session_key=?", oldSid)
 	var data []byte

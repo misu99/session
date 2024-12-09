@@ -72,6 +72,10 @@ func (st *SessionStoreMem) SessionID() string {
 	return st.sid
 }
 
+// SessionDelay Implement method, no used.
+func (st *SessionStoreMem) SessionDelay() {
+}
+
 // SessionRelease Implement method, no used.
 func (st *SessionStoreMem) SessionRelease() {
 }
@@ -139,7 +143,7 @@ func (pdr *ProviderMem) SessionExist(sid string) bool {
 }
 
 // SessionRegenerate generate new sid for session store in memory session
-func (pdr *ProviderMem) SessionRegenerate(oldSid, sid string, lifetime int64) (store.Store, error) {
+func (pdr *ProviderMem) SessionRegenerate(oldSid, sid string) (store.Store, error) {
 	pdr.lock.RLock()
 	if element, ok := pdr.sessions[oldSid]; ok {
 		go pdr.SessionUpdate(oldSid)

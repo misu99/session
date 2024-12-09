@@ -37,11 +37,11 @@ import (
 // Provider contains global session methods and saved SessionStores.
 // it can operate a SessionStore by its id.
 type Provider interface {
-	SessionInit(gclifetime int64, config string) error
+	SessionInit(lifetime int64, config string) error
 	SessionNew(sid string, lifetime int64) (store.Store, error)
 	SessionRead(sid string) (store.Store, error)
 	SessionExist(sid string) bool
-	SessionRegenerate(oldsid, sid string, lifetime int64) (store.Store, error)
+	SessionRegenerate(oldsid, sid string) (store.Store, error)
 	SessionDestroy(sid string) error
 	SessionAll() ([]string, error) //get all active session
 	SessionGC()
@@ -382,7 +382,7 @@ func (manager *Manager) SessionRegenerateID(w http.ResponseWriter, r *http.Reque
 		}
 	} else {
 		oldsid, _ := url.QueryUnescape(cookie.Value)
-		session, _ = manager.provider.SessionRegenerate(oldsid, sid, 0)
+		session, _ = manager.provider.SessionRegenerate(oldsid, sid)
 		cookie.Value = url.QueryEscape(sid)
 		cookie.HttpOnly = true
 		cookie.Path = "/"
@@ -402,26 +402,6 @@ func (manager *Manager) SessionRegenerateID(w http.ResponseWriter, r *http.Reque
 	}
 
 	return
-}
-
-// 重新生成token
-func (manager *Manager) TokenRegenerateID(oldsid string) (store.Store, error) {
-	sid, err := manager.sessionID()
-	if err != nil {
-		return nil, err
-	}
-
-	return manager.provider.SessionRegenerate(oldsid, sid, 0)
-}
-
-// token续期
-func (manager *Manager) TokenExtension(sid string) error {
-	_, err := manager.provider.SessionRegenerate(sid, sid, 0)
-	return err
-}
-func (manager *Manager) TokenExtensionExpired(sid string, ttl time.Duration) error {
-	_, err := manager.provider.SessionRegenerate(sid, sid, int64(ttl.Seconds()))
-	return err
 }
 
 // GetActiveSession Get all active sessions id.

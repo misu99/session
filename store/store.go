@@ -6,6 +6,7 @@ type Store interface {
 	Get(key interface{}) interface{}  //get session value
 	Delete(key interface{}) error     //delete session value
 	SessionID() string                //back current sessionID
+	SessionDelay()                    //session延期
 	SessionRelease()                  //release the resource & save data to provider & return the data
 	Flush() error                     //delete all data
 }
